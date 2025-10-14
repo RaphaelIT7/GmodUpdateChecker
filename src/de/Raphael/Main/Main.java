@@ -50,6 +50,11 @@ public class Main {
 		{
 			DataCache.Set("callType", "SingleBranch");
 		}
+		
+		if (!DataCache.Has("updateFrequency"))
+		{
+			DataCache.Set("updateFrequency", 60);
+		}
 	}
 	
 	private static final HttpClient client = HttpClient.newHttpClient();
@@ -57,6 +62,7 @@ public class Main {
 	public static void main(String[] args)
 	{
 		System.out.println("Started");
+		CreateDefaultsIfMissing();
 		ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 		scheduler.scheduleAtFixedRate(() -> {
 			try {
@@ -152,6 +158,6 @@ public class Main {
 				System.err.println("Error during request: " + e.getMessage());
 				e.printStackTrace();
 			}
-		}, 0, 1, TimeUnit.MINUTES);
+		}, 0, (Integer)DataCache.Get("updateFrequency"), TimeUnit.SECONDS);
 	}
 }
