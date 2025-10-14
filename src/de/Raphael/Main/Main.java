@@ -45,6 +45,11 @@ public class Main {
 		{
 			DataCache.Set("appID", "4000"); // Normally can be 4000 or 4020
 		}
+		
+		if (!DataCache.Has("callType"))
+		{
+			DataCache.Set("callType", "SingleBranch");
+		}
 	}
 	
 	private static final HttpClient client = HttpClient.newHttpClient();
@@ -71,6 +76,7 @@ public class Main {
 				JSONObject lastUpdates = (JSONObject)DataCache.Get("lastUpdates");
 				if (branches != null && lastUpdates != null)
 				{
+					boolean hasUpdate = false;
 					for (int i = 0; i < branches.length(); i++)
 					{
 						String branch = branches.getString(i);
@@ -81,29 +87,62 @@ public class Main {
 							System.out.println("New update for branch " + branch + "!");
 							lastUpdates.put(branch, lastUpdate);
 							
-							// Dispatching GLuaTest workflow
-							JSONObject inputs = new JSONObject();
-							inputs.put("branch", branch);
-							inputs.put("game_version", lastUpdate);
-								
-							JSONObject body = new JSONObject();
-							body.put("ref", "main");
-							body.put("inputs", inputs);
-								
-							HttpRequest githunRequest = HttpRequest.newBuilder()
-									.uri(URI.create("https://api.github.com/repos/CFC-Servers/GLuaTest/actions/workflows/update_single_branch.yml/dispatches"))
-									.header("Accept", "application/vnd.github+json")
-									.header("Authorization", "Bearer " + (String)DataCache.Get("apiKey"))
-									.header("X-GitHub-Api-Version", "2022-11-28")
-									.header("Content-Type", "application/json")
-									.POST(HttpRequest.BodyPublishers.ofString(body.toString()))
-									.build();
-								
-							HttpResponse<String> githubResponse = client.send(githunRequest, HttpResponse.BodyHandlers.ofString());
-							if (githubResponse.statusCode() == 204)
+							hasUpdate = true;
+							
+							String callType = (String)DataCache.Get("callType");
+							if (callType.equalsIgnoreCase("SingleBranch"))
 							{
-								System.out.println("Successfully dispatched GLuaTest workflow for " + branch + " :3");
+								// Dispatching GLuaTest workflow
+								JSONObject inputs = new JSONObject();
+								inputs.put("branch", branch);
+								inputs.put("game_version", lastUpdate);
+									
+								JSONObject body = new JSONObject();
+								body.put("ref", "main");
+								body.put("inputs", inputs);
+								
+								HttpRequest githunRequest = HttpRequest.newBuilder()
+										.uri(URI.create("https://api.github.com/repos/CFC-Servers/GLuaTest/actions/workflows/update_single_branch.yml/dispatches"))
+										.header("Accept", "application/vnd.github+json")
+										.header("Authorization", "Bearer " + (String)DataCache.Get("apiKey"))
+										.header("X-GitHub-Api-Version", "2022-11-28")
+										.header("Content-Type", "application/json")
+										.POST(HttpRequest.BodyPublishers.ofString(body.toString()))
+										.build();
+									
+								HttpResponse<String> githubResponse = client.send(githunRequest, HttpResponse.BodyHandlers.ofString());
+								if (githubResponse.statusCode() == 204)
+								{
+									System.out.println("Successfully dispatched GLuaTest workflow for " + branch + " :3");
+								}
 							}
+						}
+					}
+					
+					String callType = (String)DataCache.Get("callType");
+					if (hasUpdate && (callType.equalsIgnoreCase("AllBranches") || callType.equalsIgnoreCase("AllBranchesForceRebuild")))
+					{
+						// Dispatching GLuaTest workflow
+						JSONObject inputs = new JSONObject();
+						inputs.put("force_rebuild", callType.equalsIgnoreCase("AllBranchesForceRebuild"));
+							
+						JSONObject body = new JSONObject();
+						body.put("ref", "main");
+						body.put("inputs", inputs);
+						
+						HttpRequest githunRequest = HttpRequest.newBuilder()
+								.uri(URI.create("https://api.github.com/repos/CFC-Servers/GLuaTest/actions/workflows/check_for_updates.yml/dispatches"))
+								.header("Accept", "application/vnd.github+json")
+								.header("Authorization", "Bearer " + (String)DataCache.Get("apiKey"))
+								.header("X-GitHub-Api-Version", "2022-11-28")
+								.header("Content-Type", "application/json")
+								.POST(HttpRequest.BodyPublishers.ofString(body.toString()))
+								.build();
+							
+						HttpResponse<String> githubResponse = client.send(githunRequest, HttpResponse.BodyHandlers.ofString());
+						if (githubResponse.statusCode() == 204)
+						{
+							System.out.println("Successfully dispatched GLuaTest workflow for all branches :3");
 						}
 					}
 				}
