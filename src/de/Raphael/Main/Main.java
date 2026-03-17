@@ -4,6 +4,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.ArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -36,24 +37,24 @@ public class Main {
 			DataCache.Save();
 		}
 		
-		if (!DataCache.Has("apiKey"))
-		{
-			DataCache.Set("apiKey", "SETME");
-		}
-		
 		if (!DataCache.Has("appID"))
 		{
 			DataCache.Set("appID", "4000"); // Normally can be 4000 or 4020
 		}
 		
-		if (!DataCache.Has("callType"))
-		{
-			DataCache.Set("callType", "SingleBranch");
-		}
-		
 		if (!DataCache.Has("updateFrequency"))
 		{
 			DataCache.Set("updateFrequency", 60);
+		}
+		
+		if (!DataCache.Has("singleBranchTriggers"))
+		{
+			DataCache.Set("singleBranchTriggers", new ArrayList<String>());
+		}
+		
+		if (!DataCache.Has("allBranchesTriggers"))
+		{
+			DataCache.Set("allBranchesTriggers", new ArrayList<String>());
 		}
 	}
 	
@@ -94,61 +95,75 @@ public class Main {
 							lastUpdates.put(branch, lastUpdate);
 							
 							hasUpdate = true;
-							
-							String callType = (String)DataCache.Get("callType");
-							if (callType.equalsIgnoreCase("SingleBranch"))
-							{
-								// Dispatching GLuaTest workflow
-								JSONObject inputs = new JSONObject();
-								inputs.put("branch", branch);
-								inputs.put("game_version", lastUpdate);
 									
-								JSONObject body = new JSONObject();
-								body.put("ref", "main");
-								body.put("inputs", inputs);
+							JSONArray singleBranchTriggers = (JSONArray)DataCache.Get("singleBranchTriggers");
+							for (int j = 0; j < singleBranchTriggers.length(); j++)
+							{
+								JSONObject trigger = (JSONObject)singleBranchTriggers.getJSONObject(j);
 								
+								// Dispatching GLuaTest workflow
+								JSONObject inputs = trigger.has("inputs") ? trigger.getJSONObject("inputs") : new JSONObject();
+								for (String key : inputs.keySet())
+								{
+									if (inputs.getString(key).equalsIgnoreCase("$BRANCH"))
+									{
+										inputs.put(key, branch);
+									}
+									
+									if (inputs.getString(key).equalsIgnoreCase("$VERSION"))
+									{
+										inputs.put(key, lastUpdate);
+									}
+								}
+								
+								JSONObject body = new JSONObject();
+								body.put("ref", trigger.getString("branch"));
+								body.put("inputs", inputs);
+									
 								HttpRequest githunRequest = HttpRequest.newBuilder()
-										.uri(URI.create("https://api.github.com/repos/CFC-Servers/GLuaTest/actions/workflows/update_single_branch.yml/dispatches"))
+										.uri(URI.create(trigger.getString("url")))
 										.header("Accept", "application/vnd.github+json")
-										.header("Authorization", "Bearer " + (String)DataCache.Get("apiKey"))
+										.header("Authorization", "Bearer " + (String)trigger.getString("api"))
 										.header("X-GitHub-Api-Version", "2022-11-28")
 										.header("Content-Type", "application/json")
 										.POST(HttpRequest.BodyPublishers.ofString(body.toString()))
 										.build();
-									
+										
 								HttpResponse<String> githubResponse = client.send(githunRequest, HttpResponse.BodyHandlers.ofString());
 								if (githubResponse.statusCode() == 204)
 								{
-									System.out.println("Successfully dispatched GLuaTest workflow for " + branch + " :3");
+									System.out.println("Successfully dispatched " + trigger.getString("name") + " workflow for " + branch + " :3");
 								}
 							}
 						}
 					}
 					
-					String callType = (String)DataCache.Get("callType");
-					if (hasUpdate && (callType.equalsIgnoreCase("AllBranches") || callType.equalsIgnoreCase("AllBranchesForceRebuild")))
+					if (hasUpdate)
 					{
-						// Dispatching GLuaTest workflow
-						JSONObject inputs = new JSONObject();
-						inputs.put("force_rebuild", callType.equalsIgnoreCase("AllBranchesForceRebuild"));
-							
-						JSONObject body = new JSONObject();
-						body.put("ref", "main");
-						body.put("inputs", inputs);
-						
-						HttpRequest githunRequest = HttpRequest.newBuilder()
-								.uri(URI.create("https://api.github.com/repos/CFC-Servers/GLuaTest/actions/workflows/check_for_updates.yml/dispatches"))
-								.header("Accept", "application/vnd.github+json")
-								.header("Authorization", "Bearer " + (String)DataCache.Get("apiKey"))
-								.header("X-GitHub-Api-Version", "2022-11-28")
-								.header("Content-Type", "application/json")
-								.POST(HttpRequest.BodyPublishers.ofString(body.toString()))
-								.build();
-							
-						HttpResponse<String> githubResponse = client.send(githunRequest, HttpResponse.BodyHandlers.ofString());
-						if (githubResponse.statusCode() == 204)
+						JSONArray allBranchesTriggers = (JSONArray)DataCache.Get("allBranchesTriggers");
+						for (int i = 0; i < allBranchesTriggers.length(); i++)
 						{
-							System.out.println("Successfully dispatched GLuaTest workflow for all branches :3");
+							JSONObject trigger = (JSONObject)allBranchesTriggers.getJSONObject(i);
+						
+							// Dispatching GLuaTest workflow
+							JSONObject body = new JSONObject();
+							body.put("ref", trigger.getString("branch"));
+							body.put("inputs", trigger.has("inputs") ? trigger.getJSONObject("inputs") : new JSONObject());
+							
+							HttpRequest githunRequest = HttpRequest.newBuilder()
+									.uri(URI.create(trigger.getString("url")))
+									.header("Accept", "application/vnd.github+json")
+									.header("Authorization", "Bearer " + (String)trigger.getString("api"))
+									.header("X-GitHub-Api-Version", "2022-11-28")
+									.header("Content-Type", "application/json")
+									.POST(HttpRequest.BodyPublishers.ofString(body.toString()))
+									.build();
+								
+							HttpResponse<String> githubResponse = client.send(githunRequest, HttpResponse.BodyHandlers.ofString());
+							if (githubResponse.statusCode() == 204)
+							{
+								System.out.println("Successfully dispatched " + trigger.getString("name") + " workflow for all branches :3");
+							}
 						}
 					}
 				}
